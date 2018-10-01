@@ -45,7 +45,9 @@ reduce_dim <- function(count_hv){
   
   require(rsvd)
   
-  pca = rpca(t(count_hv), k = 1000, center = TRUE, scale = FALSE) 
+  pca = rsvd::rpca(t(count_hv), k = 1000, center = TRUE, scale = FALSE) 
+  
+  
   
   return(pca)
 }
