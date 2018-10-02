@@ -53,13 +53,15 @@ mr <- ScaleData(object = mr, vars.to.regress = c("nUMI"))
 
 lineages = read.csv("mmc3-2.csv",header = T, stringsAsFactors = F)$ACE
 
-mr <- RunPCA(object = mr, pc.genes = lineages, do.print = TRUE, pcs.print = 1:5, 
+mr <- RunPCA(object = mr, do.print = TRUE, pcs.print = 1:5, 
              genes.print = 5,pcs.compute = 50)
 
 
 PCAPlot(object = mr, dim.1 = 1, dim.2 = 2, group = "Day")
 
 PCAPlot(object = mr, dim.1 = 1, dim.2 = 2)
+
+
 
 
 mr <- JackStraw(object = mr, num.replicate = 100, display.progress = FALSE)
@@ -73,20 +75,56 @@ TSNEPlot(object = mr, group = "Day")
 mr <- CellCycleScoring(object = mr, s.genes = cc.genes$s.genes, g2m.genes = cc.genes$g2m.genes, 
                        set.ident = TRUE)
 
+
+PCAPlot(object = mr, dim.1 = 1, dim.2 = 2)
+
+FeaturePlot(mr, features.plot = c("CDX2"), reduction.use = "pca")
+
+RidgePlot(object = mr, features.plot = c("PCNA", "TOP2A", "MCM6", "MKI67"), 
+          nCol = 2)
+
+VlnPlot(object = mr, features.plot = c("PCNA", "TOP2A", "MCM6", "MKI67"), 
+          nCol = 2, group.by = "Day")
+
+
+VlnPlot(object = mr, features.plot = c("GATA2","GATA3","DPPA5"), 
+        nCol = 2, group.by = "Phase")
+#######################################
+
+mr.G2m = SubsetData(mr, cells.use =  rownames(mr@meta.data)[mr@meta.data$Phase=="G2M" ], do.scale = T, do.center = T)
+
+VlnPlot(object = mr.G2m, features.plot = c("PCNA", "TOP2A", "MCM6", "MKI67"), 
+        nCol = 2, group.by = "Day")
+
+mr.S = SubsetData(mr, cells.use =  rownames(mr@meta.data)[mr@meta.data$Phase=="S" ], do.scale = T, do.center = T)
+VlnPlot(object = mr.S, features.plot = c("PCNA", "TOP2A", "MCM6", "MKI67"), 
+        nCol = 2, group.by = "Day")
+
+
+
 ##########################################
 
-mr.E3 = SubsetData(mr, cells.use =  rownames(mr@meta.data)[mr@meta.data$Day=="E3"], do.scale = T, do.center = T)
+mr.E67 = SubsetData(mr, cells.use =  rownames(mr@meta.data)[mr@meta.data$Day=="E6" | mr@meta.data$Day=="E7"], do.scale = T, do.center = T)
 
 
-mr.E3 <- CellCycleScoring(object = mr.E3, s.genes = cc.genes$s.genes, g2m.genes = cc.genes$g2m.genes, 
+mr.E67 <- CellCycleScoring(object = mr.E67, s.genes = cc.genes$s.genes, g2m.genes = cc.genes$g2m.genes, 
                        set.ident = TRUE)
 
-PCAPlot(object = mr.E3, dim.1 = 1, dim.2 = 2)
+PCAPlot(object = mr.E67, dim.1 = 1, dim.2 = 2)
 
 
 
 
 FeaturePlot(mr, features.plot = c("TOP2A","MCM6","MKI67"), reduction.use = 'pca', pt.size = 2)
 
+##########################
+
+mr.E34 = SubsetData(mr, cells.use =  rownames(mr@meta.data)[mr@meta.data$Day=="E3" | mr@meta.data$Day=="E4"], do.scale = T, do.center = T)
+
+
+mr.E34 <- CellCycleScoring(object = mr.E34, s.genes = cc.genes$s.genes, g2m.genes = cc.genes$g2m.genes, 
+                           set.ident = TRUE)
+
+PCAPlot(object = mr.E34, dim.1 = 1, dim.2 = 2)
 
 

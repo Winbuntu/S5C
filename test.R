@@ -26,8 +26,32 @@ marrow <- ScaleData(object = marrow, display.progress = FALSE)
 marrow <- RunPCA(object = marrow, pc.genes = marrow@var.genes, pcs.print = 1:4, 
                  genes.print = 10)
 
+
+marrow <- RunTSNE(object = marrow, dims.use = 1:15, do.fast = TRUE)
+
+
+TSNEPlot(marrow)
+
+marrow <- FindClusters(marrow)
+
+
+TSNEPlot(marrow)
+
+
+FeaturePlot(marrow, features.plot = c("GATA1","CD48","MPL"), reduction.use = "tsne")
+
+VlnPlot(marrow, features.plot = c("GATA1","CD48","MPL"))
+
 marrow <- CellCycleScoring(object = marrow, s.genes = cc.genes$s.genes, g2m.genes = cc.genes$g2m.genes, 
-                           set.ident = TRUE)
+                           set.ident = F)
+
+
+VlnPlot(object = marrow, features.plot = c("PCNA", "TOP2A", "MCM6", "MKI67"), 
+        nCol = 2)
+
+marrow.S = SubsetData(marrow, cells.use =  rownames(marrow@meta.data)[marrow@meta.data$Phase=="S" ], do.scale = T, do.center = T)
+
+
 marrow <- RunPCA(object = marrow, pc.genes = c(cc.genes$s.genes, cc.genes$g2m.genes), do.print = FALSE)
 PCAPlot(object = marrow)
 
