@@ -161,7 +161,6 @@ find_neighbors = function(count_hv, labeled, Kcluster = NULL,
     mat_pcs = t(pca$x[, 1:npc]) # columns are cells
     
     
-    
     ## detect outliers
     print("calculating cell distances ...")
     dist_cells_list = mclapply(1:J, function(id1){
@@ -192,7 +191,7 @@ find_neighbors = function(count_hv, labeled, Kcluster = NULL,
     nbs = rep(NA, J)
     nbs[-outliers] = spec_res
     
-    return(list(dist_cells = dist_cells, clust = nbs))
+    return(list(dist_cells = dist_cells, clust = nbs, pc_score= t(mat_pcs) ))
   }
 }
 

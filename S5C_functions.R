@@ -1,3 +1,5 @@
+load("cc.geges.RDS") # this is required
+
 
 read_count <- function(raw_count){
   
@@ -15,7 +17,7 @@ read_count <- function(raw_count){
 }
 
 
-find_hv_genes = function(count){
+find_hv_genes <- function(count){
   
   mu = apply(count, 1, function(x){  mean(x[x != log10(1.01)])   }  )
   mu[is.na(mu)] = 0
@@ -59,24 +61,174 @@ CaseMatch <- function (search, match)
   return(unlist(x = search.match))
 }
 
+
+ScaleMatrix <- function(mat){
+  
+  return(t(scale(t(mat), center = T, scale = T)))
+  
+  
+}
+
+
+
+find_neighbors <- function(count_hv, labeled=F, Kcluster = NULL, 
+                          ncores=1, cell_labels = NULL){
+  
+  require(rsvd)
+  require(parallel)
+  require(kernlab)
+  
+  J = dim(count_hv)[2]
+  
+  if(labeled == TRUE){
+    if(class(cell_labels) == "character"){
+      labels_uniq = unique(cell_labels)
+      labels_mth = 1:length(labels_uniq)
+      names(labels_mth) = labels_uniq
+      clust = labels_mth[cell_labels]
+    }else{
+      clust = cell_labels
+    }
+    nclust = length(unique(clust))
+    print("calculating cell distances ...")
+    dist_list = lapply(1:nclust, function(ll){
+      cell_inds = which(clust == ll)
+      count_hv_sub = count_hv[, cell_inds, drop = FALSE]
+      if(length(cell_inds) < 1000){
+        var_thre = 0.4
+        pca = prcomp(t(count_hv_sub))
+        eigs = (pca$sdev)^2
+        var_cum = cumsum(eigs)/sum(eigs)
+        if(max(var_cum) <= var_thre){
+          npc = length(var_cum)
+        }else{
+          npc = which.max(var_cum > var_thre)
+          if (labeled == FALSE){ npc = max(npc, Kcluster) }
+        }
+      }else{
+        var_thre = 0.6
+        pca = rpca(t(count_hv_sub), k = 1000, center = TRUE, scale = FALSE) 
+        eigs = (pca$sdev)^2
+        var_cum = cumsum(eigs)/sum(eigs)
+        if(max(var_cum) <= var_thre){
+          npc = length(var_cum)
+        }else{
+          npc = which.max(var_cum > var_thre)
+          if (labeled == FALSE){ npc = max(npc, Kcluster) }
+        }
+      }
+      
+      if (npc < 3){ npc = 3 }
+      mat_pcs = t(pca$x[, 1:npc]) 
+      
+      dist_cells_list = mclapply(1:length(cell_inds), function(id1){
+        d = sapply(1:id1, function(id2){
+          sse = sum((mat_pcs[, id1] - mat_pcs[, id2])^2)
+          sqrt(sse)
+        })
+        return(c(d, rep(0, length(cell_inds)-id1)))
+      }, mc.cores = ncores)
+      dist_cells = matrix(0, nrow = length(cell_inds), ncol = length(cell_inds))
+      for(cellid in 1:length(cell_inds)){dist_cells[cellid, ] = dist_cells_list[[cellid]]}
+      dist_cells = dist_cells + t(dist_cells)
+      return(dist_cells)
+    })
+    return(list(dist_list = dist_list, clust = clust, pc_score= t(mat_pcs)))
+  }
+  
+  if(labeled == FALSE){
+    ## dimeansion reduction
+    
+    #count_hv = deng.emb.data.norm.hv ###### test
+    #labeled = F
+    #Kcluster = 5
+    # J = dim(count_hv)[2]
+    #ncores = 1
+    # J = 4000
+    
+    print("dimension reduction ...")
+    if(J < 5000){
+      var_thre = 0.4
+      pca = prcomp(t(count_hv))
+      eigs = (pca$sdev)^2
+      var_cum = cumsum(eigs)/sum(eigs)
+      if(max(var_cum) <= var_thre){
+        npc = length(var_cum)
+      }else{
+        npc = which.max(var_cum > var_thre)
+        if (labeled == FALSE){ npc = max(npc, Kcluster) }
+      }
+    }else{
+      var_thre = 0.6
+      pca = rpca(t(count_hv), k = 1000, center = TRUE, scale = FALSE) 
+      eigs = (pca$sdev)^2
+      var_cum = cumsum(eigs)/sum(eigs)
+      if(max(var_cum) <= var_thre){
+        npc = length(var_cum)
+      }else{
+        npc = which.max(var_cum > var_thre)
+        if (labeled == FALSE){ npc = max(npc, Kcluster) }
+      }
+    }
+    
+    if (npc < 3){ npc = 3 }
+    
+    mat_pcs = t(pca$x[, 1:npc]) # columns are cells
+    
+    
+    ## detect outliers
+    print("calculating cell distances ...")
+    dist_cells_list = mclapply(1:J, function(id1){
+      d = sapply(1:id1, function(id2){
+        sse = sum((mat_pcs[, id1] - mat_pcs[, id2])^2)
+        sqrt(sse)
+      })
+      return(c(d, rep(0, J-id1)))
+    }, mc.cores = ncores)
+    dist_cells = matrix(0, nrow = J, ncol = J)
+    for(cellid in 1:J){dist_cells[cellid, ] = dist_cells_list[[cellid]]}
+    dist_cells = dist_cells + t(dist_cells)
+    
+    min_dist = sapply(1:J, function(i){
+      min(dist_cells[i, -i])
+    })
+    
+    iqr = quantile(min_dist, 0.75) - quantile(min_dist, 0.25)
+    
+    outliers = which(min_dist > 1.5 * iqr + quantile(min_dist, 0.75))
+    
+    ## clustering
+    # non_out = setdiff(1:J, outliers)
+    
+    spec_res = specc(t(mat_pcs[, -outliers]), centers = Kcluster, kernel = "rbfdot")
+    print("cluster sizes:")
+    print(spec_res@size)
+    nbs = rep(NA, J)
+    nbs[-outliers] = spec_res
+    
+    return(list(dist_cells = dist_cells, clust = nbs, pc_score= t(mat_pcs) ))
+  }
+}
+
+
 ##################
 
 
-GeneSetScore <- function (object, genes.list = NULL, genes.pool = NULL, n.bin = 25, 
-                       seed.use = 1, ctrl.size = 100, use.k = FALSE, enrich.name = "GeneSet", 
+GeneSetScore <- function (object, genes.list = list(cc.genes$s.genes,cc.genes$g2m.genes), genes.pool = NULL, n.bin = 25, 
+                       seed.use = 1, ctrl.size = 100, enrich.name = "GeneSet", 
                        random.seed = 1) 
 {
   
   
-  object = exp.mat.norm
-  genes.list = list(cc.genes$s.genes,cc.genes$g2m.genes)
-  genes.pool = NULL
-  n.bin = 25
-  seed.use = 1
-  ctrl.size = 100
-  use.k = FALSE
-  enrich.name = "Cluster" 
-  random.seed = 1
+  # object = exp.mat.norm
+  # genes.list = list(cc.genes$s.genes,cc.genes$g2m.genes)
+  # genes.pool = NULL
+  # n.bin = 25
+  # seed.use = 1
+  # ctrl.size = 100
+  # use.k = FALSE
+  # enrich.name = "Cluster" 
+  # random.seed = 1
   
   
   set.seed(seed = random.seed)
@@ -102,7 +254,7 @@ GeneSetScore <- function (object, genes.list = NULL, genes.pool = NULL, n.bin = 
                   paste(names(x = which(x = !LengthCheck(values = genes.list)))), 
                   "Attempting to match case..."))
     genes.list <- lapply(X = genes.old, FUN = CaseMatch, 
-                         match = rownames(x = object@data))
+                         match = rownames(x = object))
   }
   
   
@@ -185,6 +337,119 @@ GeneSetScore <- function (object, genes.list = NULL, genes.pool = NULL, n.bin = 
 
 ##################
 # regression
+
+RegressOut_clusters <- function(dat.mat.reg, genes.scores.use, cluster_indicater, minimal_to_regress = 20){
+  
+  dat.mat.reg = data.matrix(deng.emb.dedup.data.norm)
+  
+  cluster_indicater = deng.emb.dedup.data.hv.clusters$clust
+  minimal_to_regress = 20
+
+  reg.ed.mat = matrix(NA, nrow = nrow(dat.mat.reg),
+                      ncol = ncol(dat.mat.reg))
+  
+  
+  
+  for(l in  na.omit(unique(cluster_indicater))   ){
+    
+    print(l)
+    
+    # l = 4
+    # skip regression if have too few cells
+    
+    print(dim(reg.ed.mat))
+    
+  if(length(which(cluster_indicater==l)) < minimal_to_regress ){
+    
+    reg.ed.mat[, which(    cluster_indicater==l   )] = dat.mat.reg[, which(  cluster_indicater==l   )]
+    
+    print(paste0("skip cluster ", l))
+    next
+  }
+  
+    
+    this.level.exp = dat.mat.reg[,  which(cluster_indicater==l)  ]
+    this.level.genes.scores.use = GeneSetScore(object = this.level.exp)
+    
+    
+  for( i in c(1:nrow(dat.mat.reg))){
+    
+    #i=1
+    exp1 = as.numeric(dat.mat.reg[i,  which(cluster_indicater==l)  ])
+    
+    
+    
+    lm.dat = data.frame(exp1=exp1, s.score = this.level.genes.scores.use[ ,1], 
+                        g2m.score = this.level.genes.scores.use[ ,2])
+    
+    lmEC <- lm(exp1 ~ s.score + g2m.score, data = lm.dat)
+    ## Save residuals
+    
+    reg.ed.mat[i, which(cluster_indicater==l)] = residuals(lmEC)
+
+  }
+  
+  }
+  
+  # fill outliers
+  
+  reg.ed.mat[,which(is.na( cluster_indicater ))] = dat.mat.reg[,which(is.na( cluster_indicater ))]
+  
+  return(reg.ed.mat)
+}
+
+
+#############################################
+
+head(deng.emb)
+
+deng.emb.dedup = deng.emb[(!duplicated(deng.emb$gene)),]
+deng.emb.dedup.data = deng.emb.dedup
+rownames(deng.emb.dedup.data) = deng.emb.dedup$gene
+deng.emb.dedup.data = deng.emb.dedup.data[,-1]
+
+################
+
+deng.emb.dedup.data.norm = read_count(deng.emb.dedup.data)
+
+deng.emb.dedup.data.hv = find_hv_genes(deng.emb.dedup.data.norm)
+
+deng.emb.dedup.data.hv.scaled = ScaleMatrix(deng.emb.dedup.data.hv)
+
+deng.emb.dedup.data.hv.scaled.pca.res = FactoMineR::PCA(t(deng.emb.dedup.data.hv),graph = F)
+
+
+plot.dat = data.frame(pc1=deng.emb.dedup.data.hv.scaled.pca.res$ind$coord[,c(1)],
+                      pc2 = deng.emb.dedup.data.hv.scaled.pca.res$ind$coord[,c(2)],
+                      type=factor(cell.type, levels = c("zy","early2cell","mid2cell","late2cell",
+                                                        "4cell","8cell","16cell","earlyblast","midblast","lateblast")))
+ggplot(plot.dat, aes(x=pc1, y=pc2, colour = type)) + geom_point()
+
+
+########## find clusters ########
+
+deng.emb.dedup.data.hv.clusters = find_neighbors(count_hv = deng.emb.dedup.data.hv, labeled = F,Kcluster = 5,ncores = 1)
+
+plot.dat.spec.cluster = data.frame(pc1=deng.emb.dedup.data.hv.scaled.pca.res$ind$coord[,c(1)],
+                      pc2 = deng.emb.dedup.data.hv.scaled.pca.res$ind$coord[,c(2)],
+                      type=factor(deng.emb.dedup.data.hv.clusters$clust)  )
+
+ggplot(plot.dat.spec.cluster, aes(x=pc1, y=pc2, colour = type)) + geom_point()
+
+
+##############################
+
+# 对每一个cluster regress out
+
+
+
+deng.emb.dedup.data.ccc = RegressOut_clusters(dat.mat.reg = deng.emb.dedup.data.norm, cluster_indicater = deng.emb.dedup.data.hv.clusters$clust )
+
+
+
+
+
+
 
 
 
