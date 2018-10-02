@@ -340,10 +340,10 @@ GeneSetScore <- function (object, genes.list = list(cc.genes$s.genes,cc.genes$g2
 
 RegressOut_clusters <- function(dat.mat.reg, genes.scores.use, cluster_indicater, minimal_to_regress = 20){
   
-  dat.mat.reg = data.matrix(deng.emb.dedup.data.norm)
+  dat.mat.reg = data.matrix(dat.mat.reg)
   
-  cluster_indicater = deng.emb.dedup.data.hv.clusters$clust
-  minimal_to_regress = 20
+  #cluster_indicater = deng.emb.dedup.data.hv.clusters$clust
+  #minimal_to_regress = 20
 
   reg.ed.mat = matrix(NA, nrow = nrow(dat.mat.reg),
                       ncol = ncol(dat.mat.reg))
@@ -395,8 +395,38 @@ RegressOut_clusters <- function(dat.mat.reg, genes.scores.use, cluster_indicater
   
   reg.ed.mat[,which(is.na( cluster_indicater ))] = dat.mat.reg[,which(is.na( cluster_indicater ))]
   
+  colnames(reg.ed.mat) = colnames(dat.mat.reg)
+  rownames(reg.ed.mat) = rownames(dat.mat.reg)
+  
   return(reg.ed.mat)
 }
+
+
+
+Cell_cycle_by_cluster <- function(dat.mat.reg, genes.scores.use, cluster_indicater){
+  
+  #dat.mat.reg = deng.emb.dedup.data.norm
+  
+  cell_cycle_mat = matrix(NA, nrow = length(cluster_indicater), 2)
+  
+  #cluster_indicater = deng.emb.dedup.data.hv.clusters$clust
+  
+  for(l in na.omit(unique(cluster_indicater))){
+    
+    print(l)
+    
+    
+    this.level.exp = dat.mat.reg[,  which(cluster_indicater==l)  ]
+    this.level.genes.scores.use = GeneSetScore(object = this.level.exp)
+    
+    cell_cycle_mat[which(cluster_indicater==l),] = this.level.genes.scores.use
+    
+  }
+
+  return(cell_cycle_mat)
+  
+  }
+
 
 
 #############################################
@@ -447,9 +477,68 @@ deng.emb.dedup.data.ccc = RegressOut_clusters(dat.mat.reg = deng.emb.dedup.data.
 
 
 
+deng.emb.dedup.data.ccc.hv = deng.emb.dedup.data.ccc[rownames(deng.emb.dedup.data.hv),]
 
 
+deng.emb.dedup.data.ccc.hv.pca.res = FactoMineR::PCA(t(deng.emb.dedup.data.ccc),graph = F)
 
+
+plot.dat = data.frame(pc1=deng.emb.dedup.data.ccc.hv.pca.res$ind$coord[,c(1)],
+                      pc2 = deng.emb.dedup.data.ccc.hv.pca.res$ind$coord[,c(2)],
+                      type=factor(cell.type, levels = c("zy","early2cell","mid2cell","late2cell",
+                                                        "4cell","8cell","16cell","earlyblast","midblast","lateblast")))
+
+ggplot(plot.dat, aes(x=pc1, y=pc2, colour = type)) + geom_point()
+
+
+cluster.wise.cc = Cell_cycle_by_cluster(deng.emb.dedup.data.norm,cluster_indicater = deng.emb.dedup.data.hv.clusters$clust)
+
+
+###############
+
+mat.reged = matrix(NA, ncol = ncol(deng.emb.dedup.data.norm), nrow = nrow(deng.emb.dedup.data.norm) )
+cc.matrix = cluster.wise.cc
+c.ind = cluster_indicater
+
+for(i in c(1:nrow(deng.emb.dedup.data.norm))){
+  
+  #i=1
+  exp1 = as.numeric(deng.emb.dedup.data.norm[i,])
+  s.score = cc.matrix[,1]
+  g2m.score = cc.matrix[,2]
+  
+  dat.reg = data.frame(exp1,s.score,g2m.score )
+
+  lmEC <- lm(exp1 ~ s.score + g2m.score, data = dat.reg)
+  ## Save residuals
+  
+  mat.reged[i,!is.na(c.ind)] = residuals(lmEC)
+  
+  
+  }
+
+
+colnames(mat.reged) = colnames(deng.emb.dedup.data.norm)
+rownames(mat.reged) = rownames(deng.emb.dedup.data.norm)
+
+
+# mat.reged.hv = mat.reged[rownames(deng.emb.dedup.data.hv),]
+
+mat.reged.hv = mat.reged[ na.omit(match(c(cc.genes$s.genes,cc.genes$g2m.genes),toupper(rownames(mat.reged) ))),]
+
+mat.reged.hv = deng.emb.dedup.data.norm[ na.omit(match(c(cc.genes$s.genes,cc.genes$g2m.genes),toupper(rownames(deng.emb.dedup.data.norm) ))),]
+
+mat.reged.hv.pca.res = FactoMineR::PCA(t(mat.reged.hv),graph = F)
+
+plot.dat = data.frame(pc1=mat.reged.hv.pca.res$ind$coord[,c(1)],
+                      pc2 = mat.reged.hv.pca.res$ind$coord[,c(2)],
+                      type=factor(cell.type, levels = c("zy","early2cell","mid2cell","late2cell",
+                                                        "4cell","8cell","16cell","earlyblast","midblast","lateblast")))
+
+ggplot(plot.dat, aes(x=pc1, y=pc2, colour = type)) + geom_point()
+
+
+####################################
 
 
 
