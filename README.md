@@ -1,6 +1,8 @@
 # S5C
 **Single-Cell Cluster based Cell-Cycle Correction**
 
+## Aims
+
 Cell-cycle difference between single cells can be a source of heterogenetiy, 
 which masked the interested variation in single cell RNA-seq data. Here we developed Single-Cell Cluster based Cell-Cycle Correction (S5C), 
 a package optimized for non-droplet based scRNA-seq data, which seqeunce a fewer cells 
@@ -9,14 +11,21 @@ a package optimized for non-droplet based scRNA-seq data, which seqeunce a fewer
 Compared to previous packages, such as ccRemover and Seurat that can also remove unwanted heterogeneity from cell cycle from 
 single cell RNA-seq data, S5C has following features makes it more suitable for non-droplet based scRNA-seq protocols:
 
+## Features
+
 - Can take not only read counts, but also any other properly normalized metrics as input, including RPM, TPM and RPKM, 
 which is generated from software commenly used for non-droplet based scRNA-seq data such as Kallisto and Salmon 
 (Up to today Seurat only accepts read count as input). 
 
-- Automatically detect outlier cells and exclude them when computing the coefficient, 
+- Automatically detect outlier cells and exclude them when fit the regression model, 
 which improve the robustness of "regressing-out" cell cycle bias, especially when the cell number is small 
 (ccRemover do not remove outliers; Seurat rely on large cell numbers to metigate the influence of outliers). 
 
 - Parameters were optimized for non-droplet based scRNA-seq data, 
 which generate \~1M reads and cover \~10K genes from 10~1000 cells 
 (Seurat were designed for droplet-based methods, therefore more suitable for large cell number (more than 1k), and fewer reads per sample (10k-50k) ).
+
+## How it works
+
+S5C first performs dimentional reduction using PCA, and keep the first N principle components that captures at least 40% of 
+total variance in the data. For each single cell, its distance to the nearest cells in this resuced PCA space are caculated. 
